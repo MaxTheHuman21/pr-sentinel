@@ -1,81 +1,48 @@
 """
 User service module for user management operations.
 
-This module provides functions to create and search users using the Database class.
+This module provides the UserService class to create and search users using the Database class.
 """
 
 from typing import Any
+from db.database import Database
 
-from db.database import Database, DatabaseError
-
-
-def create_user(username: str, email: str, password: str) -> dict[str, Any]:
-    """
-    Create a new user in the database.
-    
-    Args:
-        username: The username for the new user.
-        email: The email address for the new user.
-        password: The password for the new user.
+class UserService:
+    def save(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Create a new user in the database.
         
-    Returns:
-        Dictionary containing the created user data.
+        Args:
+            data: Dictionary containing user data (username, email, password, etc.)
+            
+        Returns:
+            Dictionary containing the created user data.
+        """
+        # Aseguramos que tenga un estado activo por defecto
+        if "status" not in data:
+            data["status"] = "active"
         
-    Raises:
-        DatabaseError: If the user creation fails.
-    """
-    user_data = {
-        "username": username,
-        "email": email,
-        "password": password,
-        "status": "active"
-    }
-    
-    with Database() as db:
-        db.save(user_data)
-    
-    return user_data
-
-
-def find_user_by_username(username: str) -> dict[str, Any] | list[dict[str, Any]] | None:
-    """
-    Search for a user by username.
-    
-    Args:
-        username: The username to search for.
+        with Database() as db:
+            db.save(data)
         
-    Returns:
-        User data dictionary if found, None otherwise.
-        
-    Raises:
-        DatabaseError: If the search operation fails.
-    """
-    query = f"SELECT * FROM users WHERE username = '{username}'"
-    
-    with Database() as db:
-        result = db.get(query)
-    
-    return result
+        return data
 
-
-def find_user_by_email(email: str) -> dict[str, Any] | list[dict[str, Any]] | None:
-    """
-    Search for a user by email address.
-    
-    Args:
-        email: The email address to search for.
+    def find_user_by_username(self, username: str) -> dict[str, Any] | list[dict[str, Any]] | None:
+        """Search for a user by username."""
+        query = f"SELECT * FROM users WHERE username = '{username}'"
         
-    Returns:
-        User data dictionary if found, None otherwise.
+        with Database() as db:
+            result = db.get(query)
         
-    Raises:
-        DatabaseError: If the search operation fails.
-    """
-    query = f"SELECT * FROM users WHERE email = '{email}'"
-    
-    with Database() as db:
-        result = db.get(query)
-    
-    return result
+        return result
 
-# Made with Bob
+    def find_user_by_email(self, email: str) -> dict[str, Any] | list[dict[str, Any]] | None:
+        """Search for a user by email address."""
+        query = f"SELECT * FROM users WHERE email = '{email}'"
+        
+        with Database() as db:
+            result = db.get(query)
+        
+        return result
+
+# Made with Bob and adjusted by Tech Lead
