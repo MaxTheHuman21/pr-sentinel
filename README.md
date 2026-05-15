@@ -211,3 +211,5 @@ Para preguntas, sugerencias o reportar problemas, por favor abre un issue en el 
 ---
 
 **¡Mantén tu código limpio, seguro y alineado con tus decisiones arquitectónicas!** 🛡️
+
+PR Trampa a Auditar: #[5]
