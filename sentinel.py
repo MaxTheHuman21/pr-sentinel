@@ -1,7 +1,7 @@
 """
-sentinel.py — FASE 2
-Úsalo cuando P2 haya mergeado feature/github-client a dev.
-github_client es REAL. repo_analyzer, llm_reasoner y report_formatter siguen en stub.
+sentinel.py — FASE 3
+Úsalo cuando P4 haya mergeado feature/repo-analyzer a dev.
+github_client y repo_analyzer son REALES. llm_reasoner y report_formatter siguen en stub.
 """
 
 import argparse
@@ -10,7 +10,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 
-import github_client  
+import github_client   
+import repo_analyzer   
 
 
 def _get_diff(repo: str, pr_number: int, token: str) -> str:
@@ -37,18 +38,15 @@ def _get_repo_files(repo: str, token: str) -> dict:
 
 
 def _read_adrs_and_rules(local_path: str) -> tuple:
-    """STUB: repo_analyzer aún no está listo."""
-    adrs = [
-        "ADR-001: Separar en capas /api, /services, /db.",
-        "ADR-002: TODOS los endpoints de /api deben usar @auth_middleware.",
-        "ADR-003: Todos los endpoints deben usar try/except y retornar JSON.",
-    ]
-    return adrs, "Reglas generales del repositorio (stub)."
+    """REAL: lee los ADRs y reglas del repositorio local."""
+    adrs = repo_analyzer.read_adrs(local_path)
+    rules = repo_analyzer.read_rules(local_path)
+    return adrs, rules
 
 
 def _build_import_map(files_dict: dict) -> dict:
-    """STUB: repo_analyzer aún no está listo."""
-    return {}
+    """REAL: mapea imports entre archivos .py usando ast."""
+    return repo_analyzer.build_import_map(files_dict)
 
 
 def _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key) -> dict:
@@ -76,8 +74,7 @@ def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> b
     warnings = findings.get("warnings", [])
     suggestions = findings.get("suggestions", [])
 
-    # Construimos un comentario Markdown simple mientras report_formatter no está listo
-    lines = ["##  PR Sentinel — Reporte (stub)\n"]
+    lines = ["##  PR Sentinel — Reporte (stub formatter)\n"]
     lines.append(f"** Bloqueantes: {len(blockers)}**")
     for b in blockers:
         lines.append(f"- {b.get('description')} — `{b.get('file')}` ({b.get('adr_reference')})")
@@ -94,7 +91,7 @@ def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> b
 def main():
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 2 (github_client real)")
+    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 3 (github_client + repo_analyzer reales)")
     parser.add_argument("--repo", required=True, help="owner/repo")
     parser.add_argument("--pr", required=True, type=int, help="Número de PR")
     args = parser.parse_args()
@@ -107,7 +104,7 @@ def main():
         print(" Error: GITHUB_TOKEN no configurado en .env")
         sys.exit(1)
 
-    print(f"\n  PR Sentinel FASE 2 — PR #{args.pr} en {args.repo}\n")
+    print(f"\n  PR Sentinel FASE 3 — PR #{args.pr} en {args.repo}\n")
 
     try:
         print(f"[1/5] Obteniendo diff de PR #{args.pr}... ", end="", flush=True)
