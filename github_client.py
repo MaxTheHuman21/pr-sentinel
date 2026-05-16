@@ -8,7 +8,11 @@ import requests
 from requests.exceptions import HTTPError, ConnectionError
 
 
-def get_pr_diff(repo: str, pr_number: int, token: str) -> str:
+def get_pr_diff(repo: str, pr_number: int, token: str) -> tuple:
+    """
+    Obtiene el diff de una PR y los archivos modificados.
+    Retorna: (diff_string, [list_of_changed_files])
+    """
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/files"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -21,18 +25,23 @@ def get_pr_diff(repo: str, pr_number: int, token: str) -> str:
         
         files = response.json()
         patches = []
+        changed_files = []
         
         for file in files:
-            # Filtro: ignorar arquivos removidos
+            # Filtro: ignorar archivos removidos
             if file.get('status') == 'removed':
                 continue
             
-            # Obter o diff de cada arquivo
+            filename = file.get('filename')
             patch = file.get('patch')
+            
+            if filename:
+                changed_files.append(filename)
             if patch:
                 patches.append(patch)
         
-        return '\n'.join(patches)
+        diff = '\n'.join(patches)
+        return diff, changed_files
     
     except HTTPError as e:
         print(f"[ERROR] HTTP error in get_pr_diff: {e}")
