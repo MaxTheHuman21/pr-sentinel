@@ -1,3 +1,10 @@
+# Core dependencies
 requests>=2.31.0
 python-dotenv>=1.0.0
+
+# Testing dependencies
 pytest>=7.0.0
+pytest-cov>=4.1.0
+
+# Code analysis (used by repo_analyzer.py for AST parsing)
+# Note: ast is part of Python standard library, no need to install

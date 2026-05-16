@@ -20,7 +20,7 @@ def _get_iam_token(api_key: str) -> str:
 
 
 def _call_api(url: str, headers: dict, model_id: str, project_id: str, input_text: str) -> str:
-    """Llama a watsonx.ai y retorna el texto generado."""
+    """Llama a watsonx.ai y retorna el texto generado con temperature=0 para consistencia."""
     payload = {
         "model_id": model_id,
         "project_id": project_id,
@@ -29,6 +29,7 @@ def _call_api(url: str, headers: dict, model_id: str, project_id: str, input_tex
             "decoding_method": "greedy",
             "max_new_tokens": 800,
             "repetition_penalty": 1.0,
+            "temperature": 0,  # Garantiza consistencia y determinismo
             "stop_sequences": ["\n\nPlease", "\n\nBased", "\n\nYour", "\n\nNote"]
         }
     }
@@ -117,7 +118,7 @@ def _precompute_violations(import_map: dict, diff: str) -> dict:
     }
 
 
-def _find_endpoints_in_diff_without_auth(diff: str, changed_files: list = None) -> list:
+def _find_endpoints_in_diff_without_auth(diff: str, changed_files: list | None = None) -> list:
     """
     Busca en el diff nuevos endpoints (funciones con decoradores @route, @get, @post)
     que se añaden sin tener @auth_middleware encima.
@@ -180,6 +181,7 @@ def build_prompt(diff: str, adrs: list, rules: str, import_map: dict, changed_fi
     """
     Construye un prompt COMPACTO y directo que genere SOLO JSON sin explicaciones extras.
     Analiza tanto import_map como diff para detectar violaciones.
+    INSTRUYE EXPLÍCITAMENTE al LLM a auditar TODOS los archivos en changed_files.
     """
     violations = _precompute_violations(import_map, diff)
     adr002_files = list(violations["adr002_violations"])
@@ -197,8 +199,18 @@ def build_prompt(diff: str, adrs: list, rules: str, import_map: dict, changed_fi
     adr002_str = "\n".join(f"  {f}" for f in adr002_files) if adr002_files else "  (none detected)"
     adr001_str = "\n".join(f"  {f}" for f in adr001_files) if adr001_files else "  (none detected)"
     adr003_str = "\n".join(f"  {c['file']} -> {c['function']}()" for c in adr003_items) if adr003_items else "  (none detected)"
+    
+    # Lista de archivos modificados para auditoría exhaustiva
+    changed_files_str = "\n".join(f"  - {f}" for f in changed_files) if changed_files else "  (none)"
 
     prompt = f"""CODE AUDIT TASK - RETURN JSON ONLY
+
+CRITICAL INSTRUCTION:
+You MUST audit ALL files listed in CHANGED FILES below against ALL rules (ADR-001, ADR-002, ADR-003).
+Do NOT stop at the first error you find. Analyze EXHAUSTIVELY each modified file and report ALL concurrent violations in the JSON output.
+
+CHANGED FILES TO AUDIT:
+{changed_files_str}
 
 VIOLATIONS FOUND BY STATIC ANALYSIS:
 
@@ -211,8 +223,14 @@ ADR-001 (direct imports from /db/ in /api/):
 ADR-003 (missing error handling):
 {adr003_str}
 
-GENERATE THIS JSON STRUCTURE FROM THE VIOLATIONS ABOVE.
-Use ONLY the filenames listed in the violations.
+AUDIT REQUIREMENTS:
+1. Review EVERY file in the CHANGED FILES list above
+2. Check each file against ADR-001, ADR-002, and ADR-003
+3. Report ALL violations found, not just the first one
+4. Include all violations in the JSON output structure below
+
+GENERATE THIS JSON STRUCTURE FROM ALL VIOLATIONS FOUND.
+Use the filenames from the violations detected above.
 Return valid JSON with no explanation before or after.
 Start immediately with {{ character.
 
