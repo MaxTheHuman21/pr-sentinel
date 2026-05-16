@@ -1,9 +1,3 @@
-"""
-sentinel.py — FASE 3
-Úsalo cuando P4 haya mergeado feature/repo-analyzer a dev.
-github_client y repo_analyzer son REALES. llm_reasoner y report_formatter siguen en stub.
-"""
-
 import argparse
 import os
 import sys
@@ -12,6 +6,7 @@ from dotenv import load_dotenv
 
 import github_client   
 import repo_analyzer   
+import llm_reasoner    
 
 
 def _get_diff(repo: str, pr_number: int, token: str) -> str:
@@ -50,22 +45,9 @@ def _build_import_map(files_dict: dict) -> dict:
 
 
 def _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key) -> dict:
-    """STUB: llm_reasoner aún no está listo."""
-    return {
-        "blockers": [{
-            "description": "El endpoint POST /users no usa @auth_middleware",
-            "file": "api/users.py",
-            "line": "14",
-            "adr_reference": "ADR-002"
-        }],
-        "warnings": [],
-        "suggestions": [{
-            "description": "Agregar bloque try/except al endpoint",
-            "file": "api/users.py",
-            "line": "14",
-            "adr_reference": "ADR-003"
-        }]
-    }
+    """REAL: llama al LLM con el contexto completo del repositorio."""
+    prompt = llm_reasoner.build_prompt(diff, adrs, rules, import_map, changed_files)
+    return llm_reasoner.call_llm(prompt, api_key)
 
 
 def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> bool:
@@ -79,6 +61,8 @@ def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> b
     for b in blockers:
         lines.append(f"- {b.get('description')} — `{b.get('file')}` ({b.get('adr_reference')})")
     lines.append(f"\n** Advertencias: {len(warnings)}**")
+    for w in warnings:
+        lines.append(f"- {w.get('description')} — `{w.get('file')}` ({w.get('adr_reference')})")
     lines.append(f"\n** Sugerencias: {len(suggestions)}**")
     for s in suggestions:
         lines.append(f"- {s.get('description')} — `{s.get('file')}` ({s.get('adr_reference')})")
@@ -91,20 +75,23 @@ def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> b
 def main():
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 3 (github_client + repo_analyzer reales)")
+    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 4 (LLM real)")
     parser.add_argument("--repo", required=True, help="owner/repo")
     parser.add_argument("--pr", required=True, type=int, help="Número de PR")
     args = parser.parse_args()
 
     token = os.getenv("GITHUB_TOKEN")
-    api_key = os.getenv("LLM_API_KEY", "stub-key")
+    api_key = os.getenv("BOB_API_KEY")
     local_path = os.getenv("REPO_LOCAL_PATH", "./demo_repo")
 
     if not token:
         print(" Error: GITHUB_TOKEN no configurado en .env")
         sys.exit(1)
+    if not api_key:
+        print(" Error: LLM_API_KEY no configurado en .env")
+        sys.exit(1)
 
-    print(f"\n  PR Sentinel FASE 3 — PR #{args.pr} en {args.repo}\n")
+    print(f"\n  PR Sentinel FASE 4 — PR #{args.pr} en {args.repo}\n")
 
     try:
         print(f"[1/5] Obteniendo diff de PR #{args.pr}... ", end="", flush=True)
@@ -135,7 +122,7 @@ def main():
         print(f"\n-> Comentario publicado: {n_b} bloqueantes, {n_w} advertencias, {n_s} sugerencias\n")
 
         adr_002 = any(b.get("adr_reference") == "ADR-002" for b in findings.get("blockers", []))
-        print(" CHECKPOINT ADR-002: detectado." if adr_002 else "⚠️  CHECKPOINT ADR-002: NO detectado.")
+        print(" CHECKPOINT ADR-002: detectado." if adr_002 else "  CHECKPOINT ADR-002: NO detectado — avisa a P3.")
 
     except KeyboardInterrupt:
         print("\nInterrumpido.")
