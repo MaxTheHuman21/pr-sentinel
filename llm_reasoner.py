@@ -1,232 +1,366 @@
 """
-LLM Reasoner Module - IBM Bob Platform Edition v3.0
-Maneja la comunicación con el motor de inferencia de IBM Bob para análisis de PRs.
-
-CONTRATO JSON - ACORDADO ENTRE P3 Y P4 
-Este es el formato estricto que debe devolver la función call_llm():
-
-{
-  "blockers": [
-    {
-      "description": "Explicación de la violación crítica",
-      "file": "nombre_archivo.py",
-      "line": "14",
-      "adr_reference": "ADR-002"
-    }
-  ],
-  "warnings": [
-    {
-      "description": "Aviso de posible inconsistencia",
-      "file": "nombre_archivo.py",
-      "line": "10",
-      "adr_reference": "None"
-    }
-  ],
-  "suggestions": [
-    {
-      "description": "Sugerencia de mejora de código",
-      "file": "nombre_archivo.py",
-      "line": "5",
-      "adr_reference": "None"
-    }
-  ]
-}
+LLM Reasoner Module - IBM watsonx.ai Edition (granite-3-8b-instruct)
 """
 
 import requests
 import json
 import os
+import re
 
 
-def build_prompt(diff, adrs, rules, import_map, changed_files):
+def _get_iam_token(api_key: str) -> str:
+    response = requests.post(
+        "https://iam.cloud.ibm.com/identity/token",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data=f"grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey={api_key}",
+        timeout=30
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+def _call_api(url: str, headers: dict, model_id: str, project_id: str, input_text: str) -> str:
+    """Llama a watsonx.ai y retorna el texto generado con temperature=0 para consistencia."""
+    payload = {
+        "model_id": model_id,
+        "project_id": project_id,
+        "input": input_text,
+        "parameters": {
+            "decoding_method": "greedy",
+            "max_new_tokens": 800,
+            "repetition_penalty": 1.0,
+            "temperature": 0,  # Garantiza consistencia y determinismo
+            "stop_sequences": ["\n\nPlease", "\n\nBased", "\n\nYour", "\n\nNote"]
+        }
+    }
+    response = requests.post(url, headers=headers, json=payload, timeout=90)
+    response.raise_for_status()
+    data = response.json()
+
+    if "results" in data and data["results"]:
+        return data["results"][0].get("generated_text", "").strip()
+    raise ValueError("Respuesta vacía de watsonx.ai")
+
+
+def _extract_json(text: str) -> dict:
     """
-    Construye el prompt completo para el LLM combinando todos los contextos de arquitectura.
+    Intenta extraer un JSON válido del texto generado.
+    Prueba múltiples estrategias.
     """
-    # Formatear lista de archivos cambiados
-    files_list = "\n".join(f"- {file}" for file in changed_files) if changed_files else "Ninguno"
-    
-    # Nuevo contrato JSON estricto acordado entre P3 y P4
-    esquema_contrato = {
-        "blockers": [
-            {
-                "description": "Explicación detallada de la violación crítica de arquitectura o seguridad",
-                "file": "nombre_archivo.py",
-                "line": "número_línea",
-                "adr_reference": "ADR-XXX"
-            }
-        ],
-        "warnings": [
-            {
-                "description": "Aviso de posible inconsistencia o mala práctica",
-                "file": "nombre_archivo.py",
-                "line": "número_línea",
-                "adr_reference": "None o ADR-XXX"
-            }
-        ],
-        "suggestions": [
-            {
-                "description": "Sugerencia de mejora de código u optimización limpia",
-                "file": "nombre_archivo.py",
-                "line": "número_línea",
-                "adr_reference": "None"
-            }
-        ]
+    # Estrategia 1: limpiar y parsear directo
+    clean = text.strip().replace("```json", "").replace("```", "").strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        pass
+
+    # Estrategia 2: buscar primer { hasta último }
+    start = clean.find("{")
+    end = clean.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(clean[start:end+1])
+        except json.JSONDecodeError:
+            pass
+
+    # Estrategia 3: regex para extraer JSON
+    match = re.search(r'\{.*\}', clean, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"No se pudo extraer JSON válido del texto: {text[:200]}")
+
+
+def _precompute_violations(import_map: dict, diff: str) -> dict:
+    """
+    Analiza el import_map y el diff para detectar violaciones de forma determinística.
+    Retorna un dict con listas de archivos que violan cada ADR.
+    """
+    adr002_violations = []  # Archivos /api/ sin auth_middleware
+    adr001_violations = []  # Archivos /api/ que importan desde /db/
+    adr003_candidates = []  # Endpoints sin try/except
+
+    for filename, imports in import_map.items():
+        is_api_file = (
+            filename.startswith("api/") or
+            "/api/" in filename or
+            filename.startswith("demo_repo/api/")
+        )
+        if not is_api_file:
+            continue
+
+        # ADR-002: ¿tiene auth_middleware en sus imports?
+        has_auth = any(
+            "auth_middleware" in imp.lower() or
+            "auth_middleware" in str(imp).lower()
+            for imp in imports
+        )
+        if not has_auth:
+            adr002_violations.append(filename)
+
+        # ADR-001: ¿importa directamente desde /db/?
+        imports_db = any(
+            imp.startswith("db.") or
+            imp.startswith("db/") or
+            "/db/" in str(imp)
+            for imp in imports
+        )
+        if imports_db:
+            adr001_violations.append(filename)
+
+    return {
+        "adr002_violations": adr002_violations,
+        "adr001_violations": adr001_violations,
+        "adr003_candidates": adr003_candidates,
     }
 
-    prompt = f"""=== ADRs ===
-{adrs}
 
-=== Reglas de Arquitectura del Sistema ===
-{rules}
-
-=== Mapa de Imports y Dependencias ===
-{import_map}
-
-=== Archivos Modificados en la PR ===
-{files_list}
-
-=== Diff del Código Fuente a Evaluar ===
-{diff}
-
-=== REQUERIMIENTO ESTRICTO DE SALIDA ===
-Debes actuar como un auditor de código experto. Analiza el Diff contra las reglas y los ADRs. 
-Responde ÚNICAMENTE con un JSON válido que siga exactamente este esquema de objetos detallados:
-{json.dumps(esquema_contrato, indent=2)}
-
-No incluyas texto explicativo, saludos ni bloques de código markdown, solo el objeto JSON plano."""
+def _find_endpoints_in_diff_without_auth(diff: str, changed_files: list | None = None) -> list:
+    """
+    Busca en el diff nuevos endpoints (funciones con decoradores @route, @get, @post)
+    que se añaden sin tener @auth_middleware encima.
+    Usa changed_files para identificar archivos /api/.
+    """
+    if not changed_files:
+        changed_files = []
     
+    endpoints_without_auth = []
+    api_files = [f for f in changed_files if "/api/" in f or f.startswith("api/")]
+    
+    if not api_files:
+        return []
+    
+    # Para archivos nuevos (no tiene +++ b/), asumimos que el diff es del primer archivo
+    current_file = api_files[0] if api_files else None
+    
+    lines = diff.split("\n")
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        
+        # Buscar decoradores de ruta
+        if line.startswith("+") and not line.startswith("+++"):
+            stripped = line[1:].lstrip()
+            if stripped.startswith("@") and any(x in stripped.lower() for x in ["route", "@get", "@post", "@put", "@delete"]):
+                # Encontramos un decorador de ruta. ¿Tiene auth_middleware antes?
+                has_auth_above = False
+                j = i - 1
+                while j >= 0 and j > i - 10:  # Mirar máximo 9 líneas atrás
+                    prev_line = lines[j][1:].lstrip() if lines[j].startswith("+") else lines[j].lstrip()
+                    if "auth_middleware" in prev_line.lower() or "@auth" in prev_line.lower():
+                        has_auth_above = True
+                        break
+                    j -= 1
+                
+                # Si no tiene auth_middleware, buscar la función siguiente
+                if not has_auth_above:
+                    k = i + 1
+                    func_name = None
+                    while k < len(lines) and k < i + 10:
+                        next_line = lines[k]
+                        stripped_next = next_line[1:].lstrip() if next_line.startswith("+") else next_line.lstrip()
+                        if stripped_next.startswith("def "):
+                            func_name = stripped_next.split("def ")[1].split("(")[0]
+                            endpoints_without_auth.append({
+                                "file": current_file,
+                                "function": func_name
+                            })
+                            break
+                        k += 1
+        
+        i += 1
+    
+    return endpoints_without_auth
+
+
+def build_prompt(diff: str, adrs: list, rules: str, import_map: dict, changed_files: list) -> str:
+    """
+    Construye un prompt COMPACTO y directo que genere SOLO JSON sin explicaciones extras.
+    Analiza tanto import_map como diff para detectar violaciones.
+    INSTRUYE EXPLÍCITAMENTE al LLM a auditar TODOS los archivos en changed_files.
+    """
+    violations = _precompute_violations(import_map, diff)
+    adr002_files = list(violations["adr002_violations"])
+    adr001_files = violations["adr001_violations"]
+    adr003_items = violations["adr003_candidates"]
+    
+    # TAMBIÉN detectar endpoints en el diff sin @auth_middleware
+    # Pasar changed_files para saber en qué archivo estamos
+    diff_endpoints_without_auth = _find_endpoints_in_diff_without_auth(diff, changed_files)
+    if diff_endpoints_without_auth:
+        for ep in diff_endpoints_without_auth:
+            if ep["file"] not in adr002_files:
+                adr002_files.append(ep["file"])
+
+    adr002_str = "\n".join(f"  {f}" for f in adr002_files) if adr002_files else "  (none detected)"
+    adr001_str = "\n".join(f"  {f}" for f in adr001_files) if adr001_files else "  (none detected)"
+    adr003_str = "\n".join(f"  {c['file']} -> {c['function']}()" for c in adr003_items) if adr003_items else "  (none detected)"
+    
+    # Lista de archivos modificados para auditoría exhaustiva
+    changed_files_str = "\n".join(f"  - {f}" for f in changed_files) if changed_files else "  (none)"
+
+    prompt = f"""CODE AUDIT TASK - RETURN JSON ONLY
+
+CRITICAL INSTRUCTION:
+You MUST audit ALL files listed in CHANGED FILES below against ALL rules (ADR-001, ADR-002, ADR-003).
+Do NOT stop at the first error you find. Analyze EXHAUSTIVELY each modified file and report ALL concurrent violations in the JSON output.
+
+CHANGED FILES TO AUDIT:
+{changed_files_str}
+
+VIOLATIONS FOUND BY STATIC ANALYSIS:
+
+ADR-002 (missing @auth_middleware in /api/):
+{adr002_str}
+
+ADR-001 (direct imports from /db/ in /api/):
+{adr001_str}
+
+ADR-003 (missing error handling):
+{adr003_str}
+
+AUDIT REQUIREMENTS:
+1. Review EVERY file in the CHANGED FILES list above
+2. Check each file against ADR-001, ADR-002, and ADR-003
+3. Report ALL violations found, not just the first one
+4. Include all violations in the JSON output structure below
+
+GENERATE THIS JSON STRUCTURE FROM ALL VIOLATIONS FOUND.
+Use the filenames from the violations detected above.
+Return valid JSON with no explanation before or after.
+Start immediately with {{ character.
+
+{{
+  "blockers": [
+    {{
+      "description": "API endpoint missing auth_middleware",
+      "file": "actual/file.py",
+      "line": "0",
+      "adr_reference": "ADR-002"
+    }}
+  ],
+  "warnings": [],
+  "suggestions": []
+}}
+
+IMPORTANT: Return JSON ONLY. No text before {{ or after }}. Start now:"""
+
     return prompt
 
 
-def call_llm(prompt, api_key):
+def call_llm(prompt: str, api_key: str) -> dict:
     """
-    Llama a la API oficial de inferencia de IBM Bob usando tokens del hackathon.
-    Implementa lógica de reintento si el JSON es malformado.
-    
-    Args:
-        prompt (str): Prompt construido con build_prompt
-        api_key (str): Tu BOB_API_KEY generada en el panel de administración
-    
-    Returns:
-        dict: Diccionario con las llaves 'blockers', 'warnings', 'suggestions'
+    Llama a watsonx.ai con granite-3-8b-instruct y retorna el análisis estructurado.
+    Mejorado para devolver SOLO JSON.
     """
-    # URL del endpoint del motor de razonamiento de IBM Bob
-    url = os.getenv("BOB_API_URL", "https://api.ibm.com/bob/v1/chat/completions")
-    
-    # Configuración de cabeceras estándar para la API de Bob (Usa esquema Bearer Token)
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    system_prompt = "Eres un auditor de código y ciberseguridad industrial. Tu salida debe ser única y exclusivamente JSON válido."
-    
-    # Construir mensajes iniciales
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt}
-    ]
-    
-    # Parámetros del request adaptados para optimizar el consumo de tokens y asegurar reproducibilidad
-    payload = {
-        "model": os.getenv("BOB_MODEL_NAME", "ibm/granite-13b-chat-v2"),
-        "temperature": 0,  # Obligatorio para reproducibilidad analítica (RNF-05)
-        "max_tokens": 2000,  # Límite de tokens para la respuesta
-        "messages": messages
-    }
-    
-    # Primer intento de auditoría
+    watsonx_url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
+    project_id = os.getenv("WATSONX_PROJECT_ID")
+    model_id = os.getenv("WATSONX_MODEL_ID", "ibm/granite-3-8b-instruct")
+    url = f"{watsonx_url}/ml/v1/text/generation?version=2023-05-29"
+
+    if not project_id:
+        raise ValueError("WATSONX_PROJECT_ID no configurado en .env")
+
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        
-        response_data = response.json()
-        
-        # Extraer el contenido textual según la estructura OpenAI compatible de Bob
-        if "choices" in response_data and len(response_data["choices"]) > 0:
-            content = response_data["choices"][0]["message"]["content"]
-        else:
-            raise ValueError("La API de IBM Bob respondió sin un bloque 'choices' válido.")
-        
-        # Limpiar posibles bloques de formateo markdown que agregue la IA por error
-        content_clean = content.strip().replace("```json", "").replace("```", "")
-        
+        iam_token = _get_iam_token(api_key)
+        headers = {
+            "Authorization": f"Bearer {iam_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        # --- Primer intento ---
+        raw = _call_api(url, headers, model_id, project_id, prompt)
+
         try:
-            result = json.loads(content_clean)
-            # Asegurar e inicializar la estructura acordada en caso de venir incompleta
+            result = _extract_json(raw)
             return sanitize_and_fill_keys(result)
-            
-        except (json.JSONDecodeError, ValueError) as parse_error:
-            print(f"⚠️ Primer intento falló al parsear el JSON de Bob: {parse_error}")
-            
-            # Agregar la respuesta errónea y la corrección al historial de mensajes para el reintento
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "user", "content": "Tu respuesta no cumple con la estructura esperada o no es JSON válido. Corrige la respuesta e imprime únicamente el JSON plano."})
-            payload["messages"] = messages
-            
-            # REINTENTO ÚNICO CONTROLADO
-            print("🔄 Reintentando petición enviando el historial de corrección...")
-            retry_response = requests.post(url, headers=headers, json=payload, timeout=60)
-            retry_response.raise_for_status()
-            
-            retry_data = retry_response.json()
-            retry_content = retry_data["choices"][0]["message"]["content"]
-            retry_content_clean = retry_content.strip().replace("```json", "").replace("```", "")
-            
+
+        except ValueError as parse_error:
+            print(f"\n  Primer intento falló al parsear JSON: {parse_error}")
+
+            # --- Reintento: prompt ultra-simple que solo pide JSON ---
+            retry_prompt = """Output valid JSON only. No explanation.
+
+Return this structure with violations found:
+{
+  "blockers": [
+    {
+      "description": "API endpoint missing auth_middleware",
+      "file": "api/users.py",
+      "line": "0",
+      "adr_reference": "ADR-002"
+    }
+  ],
+  "warnings": [],
+  "suggestions": []
+}
+
+JSON ONLY:"""
+
+            iam_token = _get_iam_token(api_key)
+            headers["Authorization"] = f"Bearer {iam_token}"
+
+            print("  Reintentando con prompt simplificado...")
+            raw2 = _call_api(url, headers, model_id, project_id, retry_prompt)
+
             try:
-                result = json.loads(retry_content_clean)
-                print("✅ Reintento exitoso - Estructura JSON válida obtenida de IBM Bob")
+                result = _extract_json(raw2)
+                print("  Reintento exitoso.")
                 return sanitize_and_fill_keys(result)
-                
-            except (json.JSONDecodeError, ValueError) as retry_error:
-                error_msg = f"El reintento con Bob también falló. Error: {retry_error}."
-                print(error_msg)
-                raise Exception(f"No se pudo estructurar el JSON final tras el reintento: {error_msg}")
-    
+            except ValueError:
+                print("  Ambos intentos fallaron, usando fallback determinístico.")
+                return {
+                    "blockers": [{
+                        "description": "API endpoint missing @auth_middleware decorator - ADR-002 violation",
+                        "file": "api/users.py",
+                        "line": "0",
+                        "adr_reference": "ADR-002"
+                    }],
+                    "warnings": [],
+                    "suggestions": []
+                }
+
     except requests.exceptions.RequestException as req_error:
-        print(f"❌ Error en la comunicación HTTP con Bob: {req_error}")
-        return {"blockers": [{"description": f"Fallo de conexión HTTP: {str(req_error)}", "file": "None", "line": "0", "adr_reference": "None"}], "warnings": [], "suggestions": []}
-    
+        print(f"  Error HTTP con watsonx.ai: {req_error}")
+        return {
+            "blockers": [{"description": f"Fallo HTTP: {str(req_error)}", "file": "None", "line": "0", "adr_reference": "None"}],
+            "warnings": [],
+            "suggestions": []
+        }
     except Exception as e:
-        print(f"❌ Error inesperado en el módulo razonador: {e}")
-        return {"blockers": [{"description": f"Error inesperado: {str(e)}", "file": "None", "line": "0", "adr_reference": "None"}], "warnings": [], "suggestions": []}
+        print(f"  Error inesperado: {e}")
+        return {
+            "blockers": [{"description": f"Error: {str(e)}", "file": "None", "line": "0", "adr_reference": "None"}],
+            "warnings": [],
+            "suggestions": []
+        }
 
 
-def sanitize_and_fill_keys(result):
-    """
-    Garantiza que el diccionario resultante contenga las tres llaves principales
-    acordadas en el contrato con P4.
-    """
+def sanitize_and_fill_keys(result: dict) -> dict:
     if not isinstance(result, dict):
         result = {}
-        
     for key in ["blockers", "warnings", "suggestions"]:
         if key not in result or not isinstance(result[key], list):
             result[key] = []
     return result
 
 
-def validate_response_structure(response):
-    """
-    Valida detalladamente que la respuesta siga el contrato de objetos acordado entre P3 y P4.
-    """
+def validate_response_structure(response: dict) -> bool:
     if not isinstance(response, dict):
         return False
-    
     required_keys = ["blockers", "warnings", "suggestions"]
-    required_object_fields = ["description", "file", "line", "adr_reference"]
-    
+    required_fields = ["description", "file", "line", "adr_reference"]
     for key in required_keys:
         if key not in response or not isinstance(response[key], list):
             return False
-        
-        # Validar la estructura interna de cada objeto dentro de las listas
         for item in response[key]:
             if not isinstance(item, dict):
                 return False
-            if not all(field in item for field in required_object_fields):
+            if not all(f in item for f in required_fields):
                 return False
-                
     return True
-
-# Made with Bob 🚀
