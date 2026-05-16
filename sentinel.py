@@ -1,26 +1,43 @@
+"""
+sentinel.py — FASE 2
+Úsalo cuando P2 haya mergeado feature/github-client a dev.
+github_client es REAL. repo_analyzer, llm_reasoner y report_formatter siguen en stub.
+"""
 
 import argparse
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
+
+import github_client  
 
 
 def _get_diff(repo: str, pr_number: int, token: str) -> str:
-    """STUB: retorna un diff simulado con la violación ADR-002."""
-    return (
-        "+++ b/api/users.py\n"
-        "+def create_user():\n"
-        "+    pass  # Sin @auth_middleware — violación ADR-002\n"
-    )
+    """REAL: obtiene el diff desde GitHub API."""
+    diff = github_client.get_pr_diff(repo, pr_number, token)
+    return diff if diff else ""
 
 
 def _get_repo_files(repo: str, token: str) -> dict:
-    """STUB: retorna diccionario vacío."""
-    return {}
+    """REAL: obtiene todos los archivos .py en paralelo con ThreadPoolExecutor."""
+    file_paths = github_client.list_python_files(repo, token)
+    files_dict = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(github_client.get_repo_file, repo, p, token): p
+            for p in file_paths
+        }
+        for future in as_completed(futures):
+            path = futures[future]
+            content = future.result()
+            if content:
+                files_dict[path] = content
+    return files_dict
 
 
 def _read_adrs_and_rules(local_path: str) -> tuple:
-    """STUB: retorna ADRs simulados."""
+    """STUB: repo_analyzer aún no está listo."""
     adrs = [
         "ADR-001: Separar en capas /api, /services, /db.",
         "ADR-002: TODOS los endpoints de /api deben usar @auth_middleware.",
@@ -30,12 +47,12 @@ def _read_adrs_and_rules(local_path: str) -> tuple:
 
 
 def _build_import_map(files_dict: dict) -> dict:
-    """STUB: retorna mapa vacío."""
+    """STUB: repo_analyzer aún no está listo."""
     return {}
 
 
 def _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key) -> dict:
-    """STUB: retorna hallazgos simulados con el bloqueante ADR-002."""
+    """STUB: llm_reasoner aún no está listo."""
     return {
         "blockers": [{
             "description": "El endpoint POST /users no usa @auth_middleware",
@@ -54,34 +71,43 @@ def _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key) -> d
 
 
 def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> bool:
-    """STUB: imprime el reporte en consola en lugar de publicar en GitHub."""
+    """STUB: report_formatter aún no está listo. Publica texto plano en GitHub."""
     blockers = findings.get("blockers", [])
     warnings = findings.get("warnings", [])
     suggestions = findings.get("suggestions", [])
-    print("\n  [STUB] Reporte que se publicaría en GitHub:")
-    print("  -----------------------------------------")
-    print(f"   Bloqueantes: {len(blockers)}")
+
+    # Construimos un comentario Markdown simple mientras report_formatter no está listo
+    lines = ["##  PR Sentinel — Reporte (stub)\n"]
+    lines.append(f"** Bloqueantes: {len(blockers)}**")
     for b in blockers:
-        print(f"     - {b.get('description')} ({b.get('adr_reference')})")
-    print(f"   Advertencias: {len(warnings)}")
-    print(f"   Sugerencias: {len(suggestions)}")
-    print("  -----------------------------------------")
-    return True
+        lines.append(f"- {b.get('description')} — `{b.get('file')}` ({b.get('adr_reference')})")
+    lines.append(f"\n** Advertencias: {len(warnings)}**")
+    lines.append(f"\n** Sugerencias: {len(suggestions)}**")
+    for s in suggestions:
+        lines.append(f"- {s.get('description')} — `{s.get('file')}` ({s.get('adr_reference')})")
+    lines.append("\n---\n_Generado por PR Sentinel (stub formatter)_")
+
+    body = "\n".join(lines)
+    return github_client.post_pr_comment(repo, pr_number, body, token)
 
 
 def main():
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 1 (stubs)")
+    parser = argparse.ArgumentParser(description="PR Sentinel — Fase 2 (github_client real)")
     parser.add_argument("--repo", required=True, help="owner/repo")
     parser.add_argument("--pr", required=True, type=int, help="Número de PR")
     args = parser.parse_args()
 
-    token = os.getenv("GITHUB_TOKEN", "stub-token")
+    token = os.getenv("GITHUB_TOKEN")
     api_key = os.getenv("LLM_API_KEY", "stub-key")
     local_path = os.getenv("REPO_LOCAL_PATH", "./demo_repo")
 
-    print(f"\n  PR Sentinel FASE 1 (stubs) — PR #{args.pr} en {args.repo}\n")
+    if not token:
+        print(" Error: GITHUB_TOKEN no configurado en .env")
+        sys.exit(1)
+
+    print(f"\n  PR Sentinel FASE 2 — PR #{args.pr} en {args.repo}\n")
 
     try:
         print(f"[1/5] Obteniendo diff de PR #{args.pr}... ", end="", flush=True)
@@ -104,18 +130,15 @@ def main():
 
         print(f"[5/5] Publicando comentario en PR #{args.pr}... ", end="", flush=True)
         success = _format_and_post(findings, args.repo, args.pr, token)
-        print("OK")
+        print("OK" if success else "ADVERTENCIA — no se pudo publicar")
 
         n_b = len(findings.get("blockers", []))
         n_w = len(findings.get("warnings", []))
         n_s = len(findings.get("suggestions", []))
-        print(f"\n-> Reporte generado (stub): {n_b} bloqueantes, {n_w} advertencias, {n_s} sugerencias\n")
+        print(f"\n-> Comentario publicado: {n_b} bloqueantes, {n_w} advertencias, {n_s} sugerencias\n")
 
         adr_002 = any(b.get("adr_reference") == "ADR-002" for b in findings.get("blockers", []))
-        if adr_002:
-            print(" CHECKPOINT: Bloqueante ADR-002 detectado correctamente.")
-        else:
-            print("  CHECKPOINT: ADR-002 NO detectado.")
+        print(" CHECKPOINT ADR-002: detectado." if adr_002 else "⚠️  CHECKPOINT ADR-002: NO detectado.")
 
     except KeyboardInterrupt:
         print("\nInterrumpido.")
