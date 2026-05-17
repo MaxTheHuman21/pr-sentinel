@@ -1,4 +1,4 @@
-# 🛡️ PR Sentinel — Auditor Semántico Automatizado de Pull Requests
+# 🛡️ PR Sentinel — Automated Semantic Pull Request Auditor
 
 <div align="center">
 
@@ -9,75 +9,75 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-*Automatiza la gobernanza arquitectónica y reduce el tiempo de revisión manual entre un 35% y un 50%*
+*Automates architectural governance and reduces manual review time by 35% to 50%*
 
 </div>
 
 ---
 
-## 📊 La Problemática: El Impuesto de Verificación
+## 📊 The Problem: The Verification Tax
 
-### 🚨 El Cuello de Botella del SDLC Moderno
+### 🚨 The Modern SDLC Bottleneck
 
-En la era de la IA generativa, las herramientas de código asistido (GitHub Copilot, ChatGPT, Claude) han **saturado los repositorios** con miles de líneas de código nuevas cada semana. Esta explosión de productividad ha creado un problema crítico:
+In the era of generative AI, code-assisted tools (GitHub Copilot, ChatGPT, Claude) have **saturated repositories** with thousands of new lines of code every week. This productivity explosion has created a critical problem:
 
-> **"El Impuesto de Verificación"** — La revisión humana de seniors se ha convertido en el cuello de botella más costoso del ciclo de desarrollo de software.
+> **"The Verification Tax"** — Senior human review has become the most expensive bottleneck in the software development lifecycle.
 
-### 💰 El Costo Real
+### 💰 The Real Cost
 
-- **⏱️ Tiempo perdido:** Los arquitectos senior dedican 40-60% de su tiempo a revisar PRs manualmente
-- **🐛 Deuda técnica:** Las violaciones arquitectónicas pasan desapercibidas bajo la presión de los deadlines
-- **🔄 Ciclos de feedback:** Múltiples iteraciones de revisión retrasan el merge hasta 3-5 días
-- **📉 Calidad comprometida:** La fatiga de revisión reduce la efectividad de detección de problemas
+- **⏱️ Lost time:** Senior architects spend 40-60% of their time manually reviewing PRs
+- **🐛 Technical debt:** Architectural violations go unnoticed under deadline pressure
+- **🔄 Feedback cycles:** Multiple review iterations delay merges by 3-5 days
+- **📉 Compromised quality:** Review fatigue reduces problem detection effectiveness
 
-### ✨ La Solución: PR Sentinel
+### ✨ The Solution: PR Sentinel
 
-**PR Sentinel devuelve la agilidad al equipo** automatizando la gobernanza arquitectónica mediante:
+**PR Sentinel restores team agility** by automating architectural governance through:
 
-1. **Análisis semántico profundo** con IBM Granite Core
-2. **Validación automática** contra Architecture Decision Records (ADRs)
-3. **Detección multi-vulnerabilidad** en una sola pasada
-4. **Reportes accionables** inyectados directamente en GitHub
+1. **Deep semantic analysis** with IBM Granite Core
+2. **Automatic validation** against Architecture Decision Records (ADRs)
+3. **Multi-vulnerability detection** in a single pass
+4. **Actionable reports** injected directly into GitHub
 
-**Resultado:** Reducción del 35-50% en tiempo de revisión manual, permitiendo que los seniors se enfoquen en decisiones estratégicas de alto valor.
+**Result:** 35-50% reduction in manual review time, allowing seniors to focus on high-value strategic decisions.
 
 ---
 
-## 🧠 Core Tecnológico: IBM watsonx.ai + Granite
+## 🧠 Technology Core: IBM watsonx.ai + Granite
 
-### 🎯 Motor de Razonamiento Inteligente
+### 🎯 Intelligent Reasoning Engine
 
-El corazón de PR Sentinel es su **motor de razonamiento lógico** (`llm_reasoner.py`) que se conecta directamente a la **API Cloud de IBM watsonx.ai**, aprovechando el poder del modelo fundacional **IBM Granite 3 8B Instruct**.
+The heart of PR Sentinel is its **logical reasoning engine** (`llm_reasoner.py`) that connects directly to the **IBM watsonx.ai Cloud API**, leveraging the power of the **IBM Granite 3 8B Instruct** foundational model.
 
-#### 🔬 Configuración Determinista para CI/CD
+#### 🔬 Deterministic Configuration for CI/CD
 
 ```python
-# llm_reasoner.py - Configuración de watsonx.ai
+# llm_reasoner.py - watsonx.ai Configuration
 payload = {
     "model_id": "ibm/granite-3-8b-instruct",
     "project_id": WATSONX_PROJECT_ID,
     "parameters": {
         "decoding_method": "greedy",
-        "temperature": 0,  # ← Auditorías 100% reproducibles
+        "temperature": 0,  # ← 100% reproducible audits
         "max_new_tokens": 800,
         "repetition_penalty": 1.0
     }
 }
 ```
 
-**¿Por qué `temperature: 0`?**
+**Why `temperature: 0`?**
 
-- ✅ **Determinismo absoluto:** Misma entrada = misma salida (crítico para CI/CD)
-- ✅ **Auditorías reproducibles:** Los equipos pueden confiar en resultados consistentes
-- ✅ **Compliance garantizado:** Trazabilidad completa para auditorías de seguridad
-- ✅ **Estabilidad en producción:** Sin variaciones aleatorias en análisis críticos
+- ✅ **Absolute determinism:** Same input = same output (critical for CI/CD)
+- ✅ **Reproducible audits:** Teams can trust consistent results
+- ✅ **Guaranteed compliance:** Complete traceability for security audits
+- ✅ **Production stability:** No random variations in critical analysis
 
-### 🏗️ Arquitectura de Integración
+### 🏗️ Integration Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    GITHUB PULL REQUEST                       │
-│                  (Código + Diff + Metadata)                  │
+│                  (Code + Diff + Metadata)                    │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -119,21 +119,21 @@ payload = {
 ┌─────────────────────────────────────────────────────────────┐
 │              GITHUB PR COMMENT (Auto-Posted)                 │
 │                                                              │
-│  🔴 Bloqueantes | ⚠️ Advertencias | 🟢 Sugerencias         │
+│  🔴 Blockers | ⚠️ Warnings | 🟢 Suggestions                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Características Core de la Solución
+## 🚀 Core Solution Features
 
-### 1️⃣ Filtro Inteligente en 3 Capas
+### 1️⃣ Intelligent 3-Layer Filter
 
-**Problema:** Repositorios masivos con miles de archivos irrelevantes saturan el análisis.
+**Problem:** Massive repositories with thousands of irrelevant files saturate the analysis.
 
-**Solución:** Sistema de filtrado multi-nivel que procesa **únicamente código relevante**.
+**Solution:** Multi-level filtering system that processes **only relevant code**.
 
-#### 🛡️ Capa 1: Exclusión de Directorios Pesados
+#### 🛡️ Layer 1: Heavy Directory Exclusion
 ```python
 EXCLUDED_DIRS = {
     'node_modules', '__pycache__', '.git', '.venv', 
@@ -141,35 +141,35 @@ EXCLUDED_DIRS = {
 }
 ```
 
-#### 🛡️ Capa 2: Blacklist de Archivos No-Código
+#### 🛡️ Layer 2: Non-Code File Blacklist
 ```python
 EXCLUDED_EXTENSIONS = {
-    '.pyc', '.pyo', '.so', '.dll', '.exe',  # Binarios
-    '.jpg', '.png', '.gif', '.svg', '.ico',  # Imágenes
-    '.pdf', '.docx', '.xlsx',                # Documentos
-    '.log', '.tmp', '.cache',                # Temporales
+    '.pyc', '.pyo', '.so', '.dll', '.exe',  # Binaries
+    '.jpg', '.png', '.gif', '.svg', '.ico',  # Images
+    '.pdf', '.docx', '.xlsx',                # Documents
+    '.log', '.tmp', '.cache',                # Temporary
     'package-lock.json', 'yarn.lock'         # Lockfiles
 }
 ```
 
-#### 🛡️ Capa 3: Whitelist de Código Fuente
+#### 🛡️ Layer 3: Source Code Whitelist
 ```python
 ALLOWED_EXTENSIONS = {
     '.py', '.js', '.ts', '.jsx', '.tsx',     # Web/Backend
-    '.java', '.kt', '.go', '.rs', '.cpp',    # Sistemas
-    '.rb', '.php', '.cs', '.swift'           # Otros
+    '.java', '.kt', '.go', '.rs', '.cpp',    # Systems
+    '.rb', '.php', '.cs', '.swift'           # Others
 }
 ```
 
-**Resultado:** Reducción del 90% en ruido de análisis, enfoque en código crítico.
+**Result:** 90% reduction in analysis noise, focus on critical code.
 
 ---
 
-### 2️⃣ Análisis Concurrente Multi-Vulnerabilidad
+### 2️⃣ Concurrent Multi-Vulnerability Analysis
 
-**Capacidad única:** El LLM Reasoner detecta **múltiples violaciones arquitectónicas simultáneamente** sobre diferentes archivos en una sola pasada.
+**Unique capability:** The LLM Reasoner detects **multiple architectural violations simultaneously** across different files in a single pass.
 
-#### 📋 Ejemplo de Análisis Paralelo
+#### 📋 Parallel Analysis Example
 
 ```json
 {
@@ -178,100 +178,100 @@ ALLOWED_EXTENSIONS = {
       "file": "api/orders.py",
       "adr": "ADR-001",
       "severity": "BLOCKER",
-      "issue": "Importación directa de db/database.py viola separación de capas"
+      "issue": "Direct import of db/database.py violates layer separation"
     },
     {
       "file": "api/users.py",
       "adr": "ADR-002",
       "severity": "BLOCKER",
-      "issue": "Endpoint sin decorador @auth_middleware"
+      "issue": "Endpoint without @auth_middleware decorator"
     },
     {
       "file": "services/order_service.py",
       "adr": "ADR-003",
       "severity": "WARNING",
-      "issue": "Excepción genérica sin contexto de negocio"
+      "issue": "Generic exception without business context"
     }
   ]
 }
 ```
 
-**Ventajas:**
-- ✅ **Eficiencia:** Una sola llamada a watsonx.ai analiza todo el PR
-- ✅ **Contexto global:** El modelo ve relaciones entre archivos
-- ✅ **Consistencia:** Criterios uniformes aplicados a todo el código
+**Advantages:**
+- ✅ **Efficiency:** Single watsonx.ai call analyzes entire PR
+- ✅ **Global context:** Model sees relationships between files
+- ✅ **Consistency:** Uniform criteria applied to all code
 
 ---
 
-### 3️⃣ Reporte Premium Inyectado en GitHub
+### 3️⃣ Premium Report Injected into GitHub
 
-**Problema:** Comentarios de bots saturan las PRs con texto plano difícil de navegar.
+**Problem:** Bot comments saturate PRs with hard-to-navigate plain text.
 
-**Solución:** Formateo estético usando **bloques HTML nativos colapsables** (`<details>` y `<summary>`).
+**Solution:** Aesthetic formatting using **native collapsible HTML blocks** (`<details>` and `<summary>`).
 
-#### 🎨 Estructura Visual del Reporte
+#### 🎨 Report Visual Structure
 
 ```html
 <details open>
-<summary><strong>🔴 BLOQUEANTES (2)</strong> — Requieren corrección inmediata</summary>
+<summary><strong>🔴 BLOCKERS (2)</strong> — Require immediate correction</summary>
 
-| Archivo | ADR | Problema | Línea |
-|---------|-----|----------|-------|
-| `api/orders.py` | ADR-001 | Importación directa de `db/database.py` | 5 |
-| `api/users.py` | ADR-002 | Falta decorador `@auth_middleware` | 12 |
-
-</details>
-
-<details>
-<summary><strong>⚠️ ADVERTENCIAS (1)</strong> — Mejoras recomendadas</summary>
-
-| Archivo | ADR | Problema | Línea |
-|---------|-----|----------|-------|
-| `services/order_service.py` | ADR-003 | Excepción genérica sin contexto | 45 |
+| File | ADR | Problem | Line |
+|------|-----|---------|------|
+| `api/orders.py` | ADR-001 | Direct import of `db/database.py` | 5 |
+| `api/users.py` | ADR-002 | Missing `@auth_middleware` decorator | 12 |
 
 </details>
 
 <details>
-<summary><strong>🟢 SUGERENCIAS (1)</strong> — Optimizaciones opcionales</summary>
+<summary><strong>⚠️ WARNINGS (1)</strong> — Recommended improvements</summary>
 
-| Archivo | Sugerencia |
-|---------|------------|
-| `api/products.py` | Considerar paginación para listados grandes |
+| File | ADR | Problem | Line |
+|------|-----|---------|------|
+| `services/order_service.py` | ADR-003 | Generic exception without context | 45 |
+
+</details>
+
+<details>
+<summary><strong>🟢 SUGGESTIONS (1)</strong> — Optional optimizations</summary>
+
+| File | Suggestion |
+|------|------------|
+| `api/products.py` | Consider pagination for large listings |
 
 </details>
 ```
 
-**Beneficios:**
-- 📊 **Separación visual clara** por severidad
-- 🎯 **Navegación rápida** con bloques colapsables
-- 📚 **Referencias directas** a ADRs con links
-- ✅ **No satura la PR** — contenido organizado y limpio
+**Benefits:**
+- 📊 **Clear visual separation** by severity
+- 🎯 **Quick navigation** with collapsible blocks
+- 📚 **Direct references** to ADRs with links
+- ✅ **Doesn't saturate PR** — organized and clean content
 
 ---
 
-## 📦 Instalación y Ejecución
+## 📦 Installation and Execution
 
-### 🔧 Requisitos Previos
+### 🔧 Prerequisites
 
 - **Python 3.8+**
-- **Cuenta GitHub** con token de acceso personal
-- **Cuenta IBM Cloud** con acceso a watsonx.ai
-- **Git** instalado
+- **GitHub account** with personal access token
+- **IBM Cloud account** with watsonx.ai access
+- **Git** installed
 
-### 📥 Paso 1: Clonar el Repositorio
+### 📥 Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/tu-usuario/pr-sentinel.git
+git clone https://github.com/your-username/pr-sentinel.git
 cd pr-sentinel
 ```
 
-### 🐍 Paso 2: Crear Entorno Virtual
+### 🐍 Step 2: Create Virtual Environment
 
 ```bash
-# Crear entorno virtual
+# Create virtual environment
 python -m venv .venv
 
-# Activar entorno virtual
+# Activate virtual environment
 # Linux/macOS:
 source .venv/bin/activate
 
@@ -279,130 +279,130 @@ source .venv/bin/activate
 .venv\Scripts\activate
 ```
 
-### 📚 Paso 3: Instalar Dependencias
+### 📚 Step 3: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Dependencias instaladas:**
-- `requests>=2.31.0` — Comunicación con APIs (GitHub, watsonx.ai)
-- `python-dotenv>=1.0.0` — Gestión de variables de entorno
-- `pytest>=7.0.0` — Suite de pruebas automatizadas
-- `pytest-cov>=4.1.0` — Reportes de cobertura de código
+**Installed dependencies:**
+- `requests>=2.31.0` — Communication with APIs (GitHub, watsonx.ai)
+- `python-dotenv>=1.0.0` — Environment variable management
+- `pytest>=7.0.0` — Automated test suite
+- `pytest-cov>=4.1.0` — Code coverage reports
 
-### ⚙️ Paso 4: Configurar Variables de Entorno
+### ⚙️ Step 4: Configure Environment Variables
 
-Crea un archivo `.env` en la raíz del proyecto (basado en `.env.example`):
+Create a `.env` file in the project root (based on `.env.example`):
 
 ```env
 # ============================================
-# CONFIGURACIÓN DE GITHUB
+# GITHUB CONFIGURATION
 # ============================================
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # ============================================
-# CONFIGURACIÓN DE IBM WATSONX.AI
+# IBM WATSONX.AI CONFIGURATION
 # ============================================
-WATSONX_API_KEY=tu_api_key_de_ibm_cloud_aqui
+WATSONX_API_KEY=your_ibm_cloud_api_key_here
 WATSONX_URL=https://us-south.ml.cloud.ibm.com
-WATSONX_PROJECT_ID=tu_project_id_aqui
+WATSONX_PROJECT_ID=your_project_id_here
 WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 
 # ============================================
-# CONFIGURACIÓN DEL REPOSITORIO
+# REPOSITORY CONFIGURATION
 # ============================================
 REPO_LOCAL_PATH=./demo_repo
 ```
 
-**🔒 Seguridad:** El archivo `.env` está bloqueado en `.gitignore` para proteger credenciales.
+**🔒 Security:** The `.env` file is blocked in `.gitignore` to protect credentials.
 
-### 🚀 Paso 5: Ejecutar el Pipeline
+### 🚀 Step 5: Run the Pipeline
 
 ```bash
-# Analizar un Pull Request específico
-python sentinel.py --repo [USUARIO/REPOSITORIO] --pr [NUMERO_PR]
+# Analyze a specific Pull Request
+python sentinel.py --repo [USER/REPOSITORY] --pr [PR_NUMBER]
 
-# Ejemplo:
+# Example:
 python sentinel.py --repo example/my-project --pr 42
 ```
 
-### 🧪 Paso 6: Ejecutar Suite de Pruebas
+### 🧪 Step 6: Run Test Suite
 
 ```bash
-# Ejecutar todas las pruebas
+# Run all tests
 pytest -v
 
-# Ejecutar con cobertura de código
+# Run with code coverage
 pytest --cov=. --cov-report=html
 
-# Ejecutar pruebas específicas
+# Run specific tests
 pytest tests/test_llm_reasoner.py -v
 ```
 
 ---
 
-## 📖 Documentación Adicional
+## 📖 Additional Documentation
 
-Para información detallada sobre la arquitectura, instalación y uso del proyecto, consulta:
+For detailed information about the architecture, installation, and project usage, see:
 
-### 📚 Documentos Clave
+### 📚 Key Documents
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Arquitectura completa del proyecto PR Sentinel
-  - Diagrama de componentes
-  - Flujo de datos del pipeline
-  - Integración con watsonx.ai
-  - Patrones de diseño implementados
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Complete PR Sentinel project architecture
+  - Component diagram
+  - Pipeline data flow
+  - watsonx.ai integration
+  - Implemented design patterns
 
-- **[GUIA_INSTALACION.md](GUIA_INSTALACION.md)** — Guía paso a paso para jueces del hackathon
-  - Obtención de credenciales (GitHub + IBM Cloud)
-  - Configuración detallada de watsonx.ai
-  - Troubleshooting común
-  - Verificación de instalación
+- **[GUIA_INSTALACION.md](GUIA_INSTALACION.md)** — Step-by-step guide for hackathon judges
+  - Obtaining credentials (GitHub + IBM Cloud)
+  - Detailed watsonx.ai configuration
+  - Common troubleshooting
+  - Installation verification
 
-- **[demo_repo/ARCHITECTURE.md](demo_repo/ARCHITECTURE.md)** — Arquitectura del repositorio de demostración
-  - Estructura de capas (API, Services, Database)
-  - ADRs implementados (ADR-001, ADR-002, ADR-003)
-  - Ejemplos de violaciones detectables
+- **[demo_repo/ARCHITECTURE.md](demo_repo/ARCHITECTURE.md)** — Demo repository architecture
+  - Layer structure (API, Services, Database)
+  - Implemented ADRs (ADR-001, ADR-002, ADR-003)
+  - Examples of detectable violations
 
 ---
 
-## 🏗️ Estructura del Proyecto
+## 🏗️ Project Structure
 
 ```
 pr-sentinel/
-├── sentinel.py                 # 🎯 CLI principal del pipeline
-├── github_client.py            # 🐙 Cliente de GitHub API
-├── llm_reasoner.py             # 🧠 Motor de razonamiento con watsonx.ai
-├── repo_analyzer.py            # 🔍 Analizador de repositorio y ADRs
-├── report_formatter.py         # 📊 Formateador de reportes HTML
-├── requirements.txt            # 📦 Dependencias del proyecto
-├── .env.example               # 🔐 Plantilla de configuración
-├── .gitignore                 # 🚫 Exclusiones de Git (incluye .env)
+├── sentinel.py                 # 🎯 Main pipeline CLI
+├── github_client.py            # 🐙 GitHub API client
+├── llm_reasoner.py             # 🧠 Reasoning engine with watsonx.ai
+├── repo_analyzer.py            # 🔍 Repository and ADR analyzer
+├── report_formatter.py         # 📊 HTML report formatter
+├── requirements.txt            # 📦 Project dependencies
+├── .env.example               # 🔐 Configuration template
+├── .gitignore                 # 🚫 Git exclusions (includes .env)
 │
-├── ARCHITECTURE.md            # 📐 Documentación de arquitectura
-├── GUIA_INSTALACION.md        # 📖 Guía de instalación completa
-├── EXAMPLE_PR_COMMENT.md      # 💬 Ejemplo de reporte generado
+├── ARCHITECTURE.md            # 📐 Architecture documentation
+├── GUIA_INSTALACION.md        # 📖 Complete installation guide
+├── EXAMPLE_PR_COMMENT.md      # 💬 Generated report example
 │
-├── demo_repo/                 # 🎪 Repositorio de demostración
-│   ├── ARCHITECTURE.md        # Arquitectura del demo
+├── demo_repo/                 # 🎪 Demo repository
+│   ├── ARCHITECTURE.md        # Demo architecture
 │   ├── docs/adr/              # Architecture Decision Records
 │   │   ├── ADR-001-estructura-modular.md
 │   │   ├── ADR-002-autenticacion-obligatoria.md
 │   │   └── ADR-003-manejo-de-errores.md
-│   ├── api/                   # Capa de presentación
+│   ├── api/                   # Presentation layer
 │   │   ├── orders.py
 │   │   ├── products.py
 │   │   └── users.py
-│   ├── services/              # Capa de lógica de negocio
+│   ├── services/              # Business logic layer
 │   │   ├── order_service.py
 │   │   └── user_service.py
-│   ├── middleware/            # Capa de middleware
+│   ├── middleware/            # Middleware layer
 │   │   └── auth_middleware.py
-│   └── db/                    # Capa de acceso a datos
+│   └── db/                    # Data access layer
 │       └── database.py
 │
-└── tests/                     # 🧪 Suite de pruebas automatizadas
+└── tests/                     # 🧪 Automated test suite
     ├── test_github_client.py
     ├── test_llm_reasoner.py
     ├── test_repo_analyzer.py
@@ -411,9 +411,9 @@ pr-sentinel/
 
 ---
 
-## 🎯 Casos de Uso
+## 🎯 Use Cases
 
-### 1. Validación de Arquitectura en CI/CD
+### 1. Architecture Validation in CI/CD
 
 ```yaml
 # .github/workflows/pr-sentinel.yml
@@ -434,98 +434,98 @@ jobs:
           WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
 ```
 
-### 2. Auditoría de Seguridad Pre-Merge
+### 2. Pre-Merge Security Audit
 
-Detecta automáticamente:
-- ❌ Endpoints sin autenticación
-- ❌ Violaciones de separación de capas
-- ❌ Manejo inadecuado de excepciones
-- ❌ Importaciones prohibidas
+Automatically detects:
+- ❌ Endpoints without authentication
+- ❌ Layer separation violations
+- ❌ Inadequate exception handling
+- ❌ Prohibited imports
 
-### 3. Onboarding de Nuevos Desarrolladores
+### 3. New Developer Onboarding
 
-Los reportes de PR Sentinel educan a los nuevos miembros del equipo sobre:
-- 📚 ADRs del proyecto
-- 🏗️ Patrones arquitectónicos
-- 🔒 Estándares de seguridad
-- ✅ Mejores prácticas
-
----
-
-## 🏆 Ventajas Competitivas
-
-| Característica | PR Sentinel | Herramientas Tradicionales |
-|----------------|-------------|----------------------------|
-| **Análisis Semántico** | ✅ Entiende contexto con IA | ❌ Solo regex/AST |
-| **Validación de ADRs** | ✅ Automática y contextual | ❌ Manual |
-| **Determinismo** | ✅ Temperature=0 (reproducible) | ⚠️ Variable |
-| **Multi-Vulnerabilidad** | ✅ Detección paralela | ❌ Secuencial |
-| **Reportes Premium** | ✅ HTML colapsable | ❌ Texto plano |
-| **Integración GitHub** | ✅ Comentarios automáticos | ⚠️ Requiere configuración |
-| **Modelo Fundacional** | ✅ IBM Granite (Enterprise) | ⚠️ Modelos públicos |
+PR Sentinel reports educate new team members about:
+- 📚 Project ADRs
+- 🏗️ Architectural patterns
+- 🔒 Security standards
+- ✅ Best practices
 
 ---
 
-## 📊 Métricas de Impacto
+## 🏆 Competitive Advantages
 
-### Antes de PR Sentinel
-- ⏱️ **Tiempo de revisión:** 2-4 horas por PR
-- 🔄 **Ciclos de feedback:** 3-5 iteraciones
-- 🐛 **Violaciones detectadas:** 60% (fatiga humana)
-- 📉 **Throughput:** 5-8 PRs/semana por senior
-
-### Después de PR Sentinel
-- ⏱️ **Tiempo de revisión:** 30-60 minutos por PR (-50%)
-- 🔄 **Ciclos de feedback:** 1-2 iteraciones (-60%)
-- 🐛 **Violaciones detectadas:** 95% (análisis automatizado)
-- 📈 **Throughput:** 12-15 PRs/semana por senior (+80%)
+| Feature | PR Sentinel | Traditional Tools |
+|---------|-------------|-------------------|
+| **Semantic Analysis** | ✅ Understands context with AI | ❌ Only regex/AST |
+| **ADR Validation** | ✅ Automatic and contextual | ❌ Manual |
+| **Determinism** | ✅ Temperature=0 (reproducible) | ⚠️ Variable |
+| **Multi-Vulnerability** | ✅ Parallel detection | ❌ Sequential |
+| **Premium Reports** | ✅ Collapsible HTML | ❌ Plain text |
+| **GitHub Integration** | ✅ Automatic comments | ⚠️ Requires configuration |
+| **Foundational Model** | ✅ IBM Granite (Enterprise) | ⚠️ Public models |
 
 ---
 
-## 🤝 Contribuir
+## 📊 Impact Metrics
 
-Las contribuciones son bienvenidas. Por favor:
+### Before PR Sentinel
+- ⏱️ **Review time:** 2-4 hours per PR
+- 🔄 **Feedback cycles:** 3-5 iterations
+- 🐛 **Violations detected:** 60% (human fatigue)
+- 📉 **Throughput:** 5-8 PRs/week per senior
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
----
-
-## 📝 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
+### After PR Sentinel
+- ⏱️ **Review time:** 30-60 minutes per PR (-50%)
+- 🔄 **Feedback cycles:** 1-2 iterations (-60%)
+- 🐛 **Violations detected:** 95% (automated analysis)
+- 📈 **Throughput:** 12-15 PRs/week per senior (+80%)
 
 ---
 
-## 🏆 Créditos
+## 🤝 Contributing
 
-**PR Sentinel** fue desarrollado para el **Hackathon IBM Bob - Mayo 2026**.
+Contributions are welcome. Please:
 
-### 🛠️ Stack Tecnológico
-
-- **[IBM watsonx.ai](https://www.ibm.com/watsonx)** — Plataforma de IA empresarial
-- **[IBM Granite 3 8B Instruct](https://www.ibm.com/granite)** — Modelo fundacional optimizado para código
-- **[GitHub API](https://docs.github.com/en/rest)** — Integración con repositorios
-- **[Python 3.8+](https://www.python.org/)** — Lenguaje de programación
-
-### 👥 Equipo
-
-Desarrollado con ❤️ por el equipo de **Mexican Monkeys IBM Bob - Mayo 2026**.
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
-## 📧 Contacto
+## 📝 License
 
-Para preguntas, sugerencias o reportar problemas, por favor abre un issue en el repositorio.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🏆 Credits
+
+**PR Sentinel** was developed for the **IBM Bob Hackathon - May 2026**.
+
+### 🛠️ Technology Stack
+
+- **[IBM watsonx.ai](https://www.ibm.com/watsonx)** — Enterprise AI platform
+- **[IBM Granite 3 8B Instruct](https://www.ibm.com/granite)** — Code-optimized foundational model
+- **[GitHub API](https://docs.github.com/en/rest)** — Repository integration
+- **[Python 3.8+](https://www.python.org/)** — Programming language
+
+### 👥 Team
+
+Developed with ❤️ by the **Mexican Monkeys IBM Bob - May 2026** team.
+
+---
+
+## 📧 Contact
+
+For questions, suggestions, or to report issues, please open an issue in the repository.
 
 ---
 
 <div align="center">
 
-**¡Mantén tu código limpio, seguro y alineado con tus decisiones arquitectónicas!** 🛡️
+**Keep your code clean, secure, and aligned with your architectural decisions!** 🛡️
 
 *Powered by IBM watsonx.ai & Granite Core*
 
