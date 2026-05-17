@@ -1,7 +1,8 @@
 """
-sentinel.py — VERSIÓN FINAL con análisis local de respaldo
-Si el LLM no detecta la violación ADR-002, el análisis local la encuentra directamente
-usando el import map y el diff.
+sentinel.py — Auditor semántico de Pull Requests con análisis local de respaldo.
+Si el LLM no detecta una violación, el análisis local la confirma usando el
+import map y el diff (que ahora incluye cabeceras +++ b/<file> gracias al fix
+en github_client.py).
 """
 
 import argparse
@@ -47,137 +48,268 @@ def _build_import_map(files_dict: dict) -> dict:
     return repo_analyzer.build_import_map(files_dict)
 
 
-def _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key) -> dict:
-    prompt = llm_reasoner.build_prompt(diff, adrs, rules, import_map, changed_files)
+def _reason_with_llm(
+    diff, adrs, rules, import_map, changed_files, api_key, files_dict
+) -> dict:
+    prompt = llm_reasoner.build_prompt(
+        diff, adrs, rules, import_map, changed_files, files_dict
+    )
     return llm_reasoner.call_llm(prompt, api_key)
 
 
 def _local_adr_analysis(diff: str, import_map: dict, changed_files: list) -> tuple:
     """
-    Análisis local de violaciones ADR usando Python puro.
-    No depende del LLM — detecta violaciones directamente del diff e import map.
+    Análisis local de violaciones ADR usando el nuevo análisis de diff.
+    
+    Este análisis actúa como respaldo cuando el LLM falla.
+    Usa _analyze_diff_for_violations de llm_reasoner para consistencia.
+    """
+    import llm_reasoner
+    
+    # Usar el análisis de diff que ya implementamos
+    violations = llm_reasoner._analyze_diff_for_violations(diff, changed_files, {})
+    
+    blockers = []
+    warnings = []
+    
+    # ADR-002: Auth middleware (BLOCKER)
+    for filename in violations.get("adr002_violations", []):
+        blockers.append({
+            "description": (
+                f"{filename} expone endpoints sin el decorador obligatorio "
+                "@auth_middleware. Violación crítica de ADR-002."
+            ),
+            "file": filename,
+            "line": "0",
+            "adr_reference": "ADR-002",
+        })
+    
+    # ADR-001: DB directo (BLOCKER)
+    for filename in violations.get("adr001_violations", []):
+        blockers.append({
+            "description": (
+                f"{filename} importa directamente la capa de datos (db/) "
+                "infringiendo ADR-001. Debe usar services/."
+            ),
+            "file": filename,
+            "line": "0",
+            "adr_reference": "ADR-001",
+        })
+    
+    # ADR-003 CRITICAL: except Exception: pass (BLOCKER)
+    for filename in violations.get("adr003_critical_violations", []):
+        blockers.append({
+            "description": (
+                f"{filename} usa 'except Exception: pass' silenciando errores críticos. "
+                "Violación grave de ADR-003."
+            ),
+            "file": filename,
+            "line": "0",
+            "adr_reference": "ADR-003",
+        })
+    
+    # ADR-003 WARNING: missing try/except (WARNING)
+    for filename in violations.get("adr003_warnings", []):
+        warnings.append({
+            "description": (
+                f"{filename} no incluye manejo de errores apropiado. "
+                "Debe implementar try/except según ADR-003."
+            ),
+            "file": filename,
+            "line": "0",
+            "adr_reference": "ADR-003",
+        })
+    
+    return blockers, warnings
 
-    Reglas implementadas:
-      ADR-002: archivos en api/ que no importan auth_middleware
-      ADR-001: archivos en api/ que importan directamente desde db
-      ADR-003: archivos en api/ sin try/except en el diff
+
+def _local_adr_analysis_OLD(diff: str, import_map: dict, changed_files: list) -> tuple:
+    """
+    DEPRECATED: Análisis local antiguo de violaciones ADR.
+    Mantenido por si se necesita revertir.
     """
     blockers = []
     warnings = []
 
-    diff_lines = diff.splitlines()
+    # Identify API files touched in this PR
+    api_files_in_pr = {
+        f for f in changed_files if "api/" in f or "api\\" in f
+    }
 
-    # Reconstruir qué archivos cambiaron y qué líneas agregaron
+    if not api_files_in_pr:
+        return blockers, warnings
+
+    # Collect diff lines per file using the "+++ b/<file>" headers added by
+    # the fixed github_client.get_pr_diff().
+    diff_lines = diff.splitlines()
     current_file = None
-    added_lines = {}
+    file_diff_lines: dict = {f: [] for f in api_files_in_pr}
+
     for line in diff_lines:
         if line.startswith("+++ b/"):
             current_file = line.replace("+++ b/", "").strip()
-            added_lines[current_file] = []
-        elif line.startswith("+") and not line.startswith("+++") and current_file:
-            added_lines[current_file].append(line[1:])
+        elif current_file in api_files_in_pr:
+            file_diff_lines[current_file].append(line)
 
-    for filename, lines in added_lines.items():
-        # Solo analizar archivos dentro de api/
-        is_api_file = filename.startswith("api/") or "api\\" in filename
-        if not is_api_file:
-            continue
+    for filename in api_files_in_pr:
+        lines = file_diff_lines[filename]
 
-        has_function_def = any(
-            l.strip().startswith("def ") or l.strip().startswith("async def ")
-            for l in lines
+        # --- ADR-002 ---
+        auth_removed = any(
+            line.startswith("-") and ("auth_middleware" in line or "@auth" in line)
+            for line in lines
         )
-        if not has_function_def:
-            continue
 
-        # ADR-002: verificar si el archivo importa auth_middleware
         file_imports = import_map.get(filename, [])
         imports_auth = any(
-            "auth_middleware" in imp or "middleware" in imp
-            for imp in file_imports
+            "auth_middleware" in imp or "middleware" in imp for imp in file_imports
         )
+        has_decorator_added = any(
+            line.startswith("+") and "@auth_middleware" in line for line in lines
+        )
+        # New endpoint functions explicitly added in this PR
+        new_endpoint_defs = [
+            line for line in lines
+            if line.startswith("+") and line.lstrip("+").lstrip().startswith("def ")
+        ]
 
-        # También buscar el decorador directamente en las líneas del diff
-        has_decorator_in_diff = any("@auth_middleware" in l for l in lines)
+        if auth_removed or (
+            new_endpoint_defs and not imports_auth and not has_decorator_added
+        ):
+            blockers.append(
+                {
+                    "description": (
+                        f"{filename} expone o modifica endpoints sin el decorador "
+                        "obligatorio @auth_middleware. Violación crítica de ADR-002."
+                    ),
+                    "file": filename,
+                    "line": "0",
+                    "adr_reference": "ADR-002",
+                }
+            )
 
-        if not imports_auth and not has_decorator_in_diff:
-            blockers.append({
-                "description": (
-                    f"El archivo {filename} define endpoints pero NO importa "
-                    f"auth_middleware desde middleware/auth_middleware.py. "
-                    f"Violación crítica de ADR-002. Los endpoints en api/orders.py "
-                    f"y api/products.py aplican el patrón correcto en su línea 14."
-                ),
-                "file": filename,
-                "line": "0",
-                "adr_reference": "ADR-002"
-            })
-
-        # ADR-001: api/ importando directamente de db/
+        # --- ADR-001 ---
         imports_db_directly = any(
-            "db" in imp and "service" not in imp
-            for imp in file_imports
+            "db" in imp and "service" not in imp for imp in file_imports
         )
         if imports_db_directly:
-            warnings.append({
-                "description": (
-                    f"{filename} importa directamente desde db/ — "
-                    f"debe hacerlo a través de services/ según ADR-001."
-                ),
-                "file": filename,
-                "line": "0",
-                "adr_reference": "ADR-001"
-            })
+            warnings.append(
+                {
+                    "description": (
+                        f"{filename} importa directamente la capa de datos (db/) "
+                        "infringiendo ADR-001. Debe usar services/."
+                    ),
+                    "file": filename,
+                    "line": "0",
+                    "adr_reference": "ADR-001",
+                }
+            )
 
-        # ADR-003: sin try/except en las líneas agregadas
-        has_try = any("try:" in l for l in lines)
-        if not has_try:
-            warnings.append({
-                "description": (
-                    f"Los endpoints en {filename} no tienen bloque try/except — "
-                    f"deben retornar errores en formato JSON según ADR-003."
-                ),
-                "file": filename,
-                "line": "0",
-                "adr_reference": "ADR-003"
-            })
+        # --- ADR-003 ---
+        # BUG FIX: only warn when a *new* def is added in this PR AND no try
+        # block is added nearby (within 20 lines after the def). This avoids
+        # flagging existing endpoints whose try blocks weren't changed.
+        if new_endpoint_defs:
+            for i, def_line in enumerate(lines):
+                if not (def_line.startswith("+") and def_line.lstrip("+").lstrip().startswith("def ")):
+                    continue
+                # Look for a try: block within the next 20 added/context lines
+                window = lines[i + 1 : i + 20]
+                has_try_nearby = any(
+                    l.startswith("+") and "try:" in l for l in window
+                )
+                if not has_try_nearby:
+                    warnings.append(
+                        {
+                            "description": (
+                                f"La nueva función en {filename} no incluye un bloque "
+                                "try/except. Es obligatorio retornar errores JSON homogéneos "
+                                "según ADR-003."
+                            ),
+                            "file": filename,
+                            "line": "0",
+                            "adr_reference": "ADR-003",
+                        }
+                    )
+                    break  # one warning per file is enough
 
     return blockers, warnings
 
 
-def _merge_findings(llm_findings: dict, local_blockers: list, local_warnings: list) -> dict:
+def _merge_findings(
+    llm_findings: dict, local_blockers: list, local_warnings: list
+) -> dict:
     """
     Combina hallazgos del LLM con los del análisis local.
-    Evita duplicados por adr_reference + file.
+    Prioriza los hallazgos del LLM (más detallados) y solo agrega
+    hallazgos locales si el LLM no detectó esa violación en ese archivo.
+    
+    Deduplicación inteligente:
+    - Extrae el ADR de la descripción si no está en adr_reference
+    - Si el LLM detectó un ADR en un archivo, no agregar violaciones locales del mismo ADR+archivo
     """
     final_blockers = list(llm_findings.get("blockers", []))
     final_warnings = list(llm_findings.get("warnings", []))
     final_suggestions = list(llm_findings.get("suggestions", []))
 
-    existing_blocker_keys = {
-        (b.get("adr_reference"), b.get("file")) for b in final_blockers
-    }
-    for blocker in local_blockers:
-        key = (blocker.get("adr_reference"), blocker.get("file"))
-        if key not in existing_blocker_keys:
-            final_blockers.append(blocker)
+    def extract_adr(item):
+        """Extrae el ADR del adr_reference o de la descripción"""
+        adr = item.get("adr_reference", "").strip()
+        if adr:
+            return adr
+        # Intentar extraer de la descripción
+        desc = item.get("description", "")
+        if "ADR-001" in desc:
+            return "ADR-001"
+        elif "ADR-002" in desc:
+            return "ADR-002"
+        elif "ADR-003" in desc:
+            return "ADR-003"
+        return "UNKNOWN"
 
-    existing_warning_keys = {
-        (w.get("adr_reference"), w.get("file")) for w in final_warnings
-    }
+    # Crear conjuntos de (ADR, archivo) ya detectados por el LLM
+    llm_blocker_keys = set()
+    for b in final_blockers:
+        adr = extract_adr(b)
+        file = b.get("file", "").strip()
+        llm_blocker_keys.add((adr, file))
+    
+    # Solo agregar blockers locales si el LLM NO detectó ese (ADR, archivo)
+    for blocker in local_blockers:
+        adr = extract_adr(blocker)
+        file = blocker.get("file", "").strip()
+        key = (adr, file)
+        
+        if key not in llm_blocker_keys:
+            final_blockers.append(blocker)
+            llm_blocker_keys.add(key)  # Evitar duplicados entre locales
+
+    # Mismo proceso para warnings
+    llm_warning_keys = set()
+    for w in final_warnings:
+        adr = extract_adr(w)
+        file = w.get("file", "").strip()
+        llm_warning_keys.add((adr, file))
+    
     for warning in local_warnings:
-        key = (warning.get("adr_reference"), warning.get("file"))
-        if key not in existing_warning_keys:
+        adr = extract_adr(warning)
+        file = warning.get("file", "").strip()
+        key = (adr, file)
+        
+        if key not in llm_warning_keys:
             final_warnings.append(warning)
+            llm_warning_keys.add(key)
 
     return {
         "blockers": final_blockers,
         "warnings": final_warnings,
-        "suggestions": final_suggestions
+        "suggestions": final_suggestions,
     }
 
 
-def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> bool:
+def _format_and_post(
+    findings: dict, repo: str, pr_number: int, token: str
+) -> bool:
     report = report_formatter.format_report(findings)
     return github_client.post_pr_comment(repo, pr_number, report, token)
 
@@ -185,9 +317,13 @@ def _format_and_post(findings: dict, repo: str, pr_number: int, token: str) -> b
 def main():
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="PR Sentinel — Auditor Semántico de Pull Requests")
+    parser = argparse.ArgumentParser(
+        description="PR Sentinel — Auditor Semántico de Pull Requests"
+    )
     parser.add_argument("--repo", required=True, help="Repositorio en formato owner/repo")
-    parser.add_argument("--pr", required=True, type=int, help="Número de la Pull Request a auditar")
+    parser.add_argument(
+        "--pr", required=True, type=int, help="Número de la Pull Request a auditar"
+    )
     args = parser.parse_args()
 
     token = os.getenv("GITHUB_TOKEN")
@@ -195,18 +331,18 @@ def main():
     local_path = os.getenv("REPO_LOCAL_PATH", "./demo_repo")
 
     if not token:
-        print(" Error: GITHUB_TOKEN no configurado en .env")
+        print("Error: GITHUB_TOKEN no configurado en .env")
         sys.exit(1)
     if not api_key:
-        print(" Error: WATSONX_API_KEY no configurado en .env")
+        print("Error: WATSONX_API_KEY no configurado en .env")
         sys.exit(1)
 
-    print(f"\n  PR Sentinel — Analizando PR #{args.pr} en {args.repo}\n")
+    print(f"\nPR Sentinel — Analizando PR #{args.pr} en {args.repo}\n")
 
     try:
         print(f"[1/5] Obteniendo diff de PR #{args.pr}... ", end="", flush=True)
         diff, changed_files = _get_diff(args.repo, args.pr, token)
-        print(f"OK ({len(diff.splitlines())} líneas modificadas, {len(changed_files)} archivos)")
+        print(f"OK ({len(diff.splitlines())} líneas, {len(changed_files)} archivos)")
 
         print("[2/5] Leyendo ADRs y reglas del repo... ", end="", flush=True)
         adrs, rules = _read_adrs_and_rules(local_path)
@@ -218,8 +354,12 @@ def main():
         print(f"OK ({len(import_map)} módulos mapeados)")
 
         print("[4/5] Razonando con WATSONX + análisis local... ", end="", flush=True)
-        llm_findings = _reason_with_llm(diff, adrs, rules, import_map, changed_files, api_key)
-        local_blockers, local_warnings = _local_adr_analysis(diff, import_map, changed_files)
+        llm_findings = _reason_with_llm(
+            diff, adrs, rules, import_map, changed_files, api_key, files_dict
+        )
+        local_blockers, local_warnings = _local_adr_analysis(
+            diff, import_map, changed_files
+        )
         findings = _merge_findings(llm_findings, local_blockers, local_warnings)
         print("OK")
 
@@ -230,23 +370,34 @@ def main():
         n_b = len(findings.get("blockers", []))
         n_w = len(findings.get("warnings", []))
         n_s = len(findings.get("suggestions", []))
-        print(f"\n-> Comentario publicado: {n_b} bloqueantes, {n_w} advertencias, {n_s} sugerencias\n")
+        print(f"\n-> {n_b} bloqueante(s), {n_w} advertencia(s), {n_s} sugerencia(s)\n")
 
-        adr_002 = any(
-            b.get("adr_reference") == "ADR-002"
-            for b in findings.get("blockers", [])
-        )
-        if adr_002:
-            print(" CHECKPOINT H+40: ADR-002 detectado. Pipeline completo funcionando.")
+        adr_002_violations = [
+            b for b in findings.get("blockers", [])
+            if b.get("adr_reference") == "ADR-002"
+        ]
+
+        api_files_in_pr = [
+            f for f in changed_files if f.startswith("api/") or "/api/" in f
+        ]
+
+        if adr_002_violations:
+            print(
+                f"CHECKPOINT: {len(adr_002_violations)} violación(es) ADR-002 detectada(s)."
+            )
+        elif api_files_in_pr:
+            print(
+                f"CHECKPOINT: Sin violaciones ADR-002 en {len(api_files_in_pr)} archivo(s) API."
+            )
         else:
-            print("  CHECKPOINT H+40: ADR-002 NO detectado — revisar import map con P4.")
+            print("CHECKPOINT: No hay archivos API en este PR.")
 
     except KeyboardInterrupt:
         print("\nInterrumpido.")
         sys.exit(0)
     except Exception as e:
-        print(f"\n Error inesperado: {e}")
-        print("   Revisa tu .env y que todos los módulos estén correctamente integrados.")
+        print(f"\nError inesperado: {e}")
+        print("Revisa tu .env y que todos los módulos estén correctamente integrados.")
         sys.exit(1)
 
 

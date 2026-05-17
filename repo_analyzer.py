@@ -1,8 +1,12 @@
+"""
+repo_analyzer.py — Lee ADRs, reglas de arquitectura y construye el mapa de imports.
+"""
+
 import ast
 from pathlib import Path
 
 
-def read_adrs(local_path: str) -> list[str]:
+def read_adrs(local_path: str) -> list:
     """
     Lee todos los archivos ADR (.md) dentro de docs/adr/
     """
@@ -12,8 +16,7 @@ def read_adrs(local_path: str) -> list[str]:
         return []
 
     adrs = []
-
-    for file in adr_path.glob("*.md"):
+    for file in sorted(adr_path.glob("*.md")):
         try:
             adrs.append(file.read_text(encoding="utf-8"))
         except Exception:
@@ -28,19 +31,15 @@ def read_rules(local_path: str) -> str:
     """
     root_path = Path(local_path)
 
-    architecture_file = root_path / "ARCHITECTURE.md"
-    claude_file = root_path / "CLAUDE.md"
-
-    if architecture_file.exists():
-        return architecture_file.read_text(encoding="utf-8")
-
-    if claude_file.exists():
-        return claude_file.read_text(encoding="utf-8")
+    for candidate in ("ARCHITECTURE.md", "CLAUDE.md"):
+        target = root_path / candidate
+        if target.exists():
+            return target.read_text(encoding="utf-8")
 
     return ""
 
 
-def extract_imports(source_code: str) -> list[str]:
+def extract_imports(source_code: str) -> list:
     """
     Extrae imports de un código Python usando AST.
     """
@@ -55,7 +54,6 @@ def extract_imports(source_code: str) -> list[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append(alias.name)
-
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 imports.append(node.module)
@@ -63,13 +61,11 @@ def extract_imports(source_code: str) -> list[str]:
     return imports
 
 
-def build_import_map(files_dict: dict[str, str]) -> dict[str, list[str]]:
+def build_import_map(files_dict: dict) -> dict:
     """
-    Construye un mapa de imports por archivo.
+    Construye un mapa { filename: [import, ...] } para todos los archivos del repo.
     """
     import_map = {}
-
     for filename, source_code in files_dict.items():
         import_map[filename] = extract_imports(source_code)
-
     return import_map
