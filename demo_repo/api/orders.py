@@ -5,7 +5,6 @@ Implements authentication as per ADR-002 and error handling as per ADR-003.
 """
 
 from flask import Flask, jsonify, request
-from middleware.auth_middleware import auth_middleware
 from datetime import datetime
 from services.order_service import OrderService
 
@@ -13,18 +12,18 @@ app = Flask(__name__)
 order_service = OrderService()
 
 @app.route('/orders', methods=['GET'])
-@auth_middleware
+# 🚨 VIOLACIÓN INTENCIONAL DE ADR-002: 
+# Eliminamos por completo el decorador @auth_middleware. 
+# El endpoint ahora está completamente desprotegido y expuesto a internet.
 def get_orders():
     try:
-        # Extract query parameters
         status = request.args.get('status', None)
         limit = int(request.args.get('limit', 10))
         offset = int(request.args.get('offset', 0))
         
-        # El auth_middleware inyecta la info del usuario en request.user
+        # Al no estar el middleware, request.user fallará o vendrá vacío
         user_id = getattr(request, 'user', {}).get('user_id', 'unknown')
         
-        # Datos simulados (en producción se usaría order_service)
         all_orders = [
             {"id": 1, "user_id": user_id, "status": "completed", "total": 150.00, "created_at": "2026-05-10T10:30:00Z"},
             {"id": 2, "user_id": user_id, "status": "pending", "total": 89.99, "created_at": "2026-05-14T15:45:00Z"},
@@ -48,11 +47,9 @@ def get_orders():
         return jsonify(response), 200
 
     except Exception as e:
-        # Cumplimiento de ADR-003: Error estructurado
-        return jsonify({
-            "success": False,
-            "error": "Internal Server Error",
-            "message": str(e)
-        }), 500
+        # 🚨 VIOLACIÓN INTENCIONAL DE ADR-003:
+        # Rompemos el formato estándar de errores. En vez de regresar un JSON estructurado corporativo
+        # con "success": False y el objeto de error, tiramos un string plano de texto genérico.
+        return f"Ocurrió un error fatal inesperado en el sistema: {str(e)}", 500
 
 # Made with Bob and adjusted by Tech Lead
